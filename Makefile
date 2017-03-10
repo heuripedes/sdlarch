@@ -1,5 +1,5 @@
-target   := nanoarch
-sources  := nanoarch.c
+target   := sdlarch
+sources  := sdlarch.c
 CFLAGS   := -Wall -O2 -g
 LFLAGS   := -static-libgcc
 LIBS     := -ldl
