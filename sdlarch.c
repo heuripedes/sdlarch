@@ -1,19 +1,13 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <errno.h>
-#include <dlfcn.h>
-
+#include <SDL.h>
 #include "libretro.h"
+#include "glad.h"
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <alsa/asoundlib.h>
+static SDL_Window *g_win = NULL;
+static SDL_GLContext *g_ctx = NULL;
+static SDL_AudioDeviceID g_pcm = 0;
+static const uint8_t *g_kbd = NULL;
 
-static GLFWwindow *g_win = NULL;
-static snd_pcm_t *g_pcm = NULL;
 static float g_scale = 3;
 
 static GLfloat g_vertex[] = {
@@ -73,16 +67,16 @@ struct keymap {
 };
 
 struct keymap g_binds[] = {
-	{ GLFW_KEY_X, RETRO_DEVICE_ID_JOYPAD_A },
-	{ GLFW_KEY_Z, RETRO_DEVICE_ID_JOYPAD_B },
-	{ GLFW_KEY_A, RETRO_DEVICE_ID_JOYPAD_Y },
-	{ GLFW_KEY_S, RETRO_DEVICE_ID_JOYPAD_X },
-	{ GLFW_KEY_UP, RETRO_DEVICE_ID_JOYPAD_UP },
-	{ GLFW_KEY_DOWN, RETRO_DEVICE_ID_JOYPAD_DOWN },
-	{ GLFW_KEY_LEFT, RETRO_DEVICE_ID_JOYPAD_LEFT },
-	{ GLFW_KEY_RIGHT, RETRO_DEVICE_ID_JOYPAD_RIGHT },
-	{ GLFW_KEY_ENTER, RETRO_DEVICE_ID_JOYPAD_START },
-	{ GLFW_KEY_BACKSPACE, RETRO_DEVICE_ID_JOYPAD_SELECT },
+    { SDL_SCANCODE_X, RETRO_DEVICE_ID_JOYPAD_A },
+    { SDL_SCANCODE_Z, RETRO_DEVICE_ID_JOYPAD_B },
+    { SDL_SCANCODE_A, RETRO_DEVICE_ID_JOYPAD_Y },
+    { SDL_SCANCODE_S, RETRO_DEVICE_ID_JOYPAD_X },
+    { SDL_SCANCODE_UP, RETRO_DEVICE_ID_JOYPAD_UP },
+    { SDL_SCANCODE_DOWN, RETRO_DEVICE_ID_JOYPAD_DOWN },
+    { SDL_SCANCODE_LEFT, RETRO_DEVICE_ID_JOYPAD_LEFT },
+    { SDL_SCANCODE_RIGHT, RETRO_DEVICE_ID_JOYPAD_RIGHT },
+    { SDL_SCANCODE_RETURN, RETRO_DEVICE_ID_JOYPAD_START },
+    { SDL_SCANCODE_BACKSPACE, RETRO_DEVICE_ID_JOYPAD_SELECT },
 
 	{ 0, 0 }
 };
@@ -90,8 +84,8 @@ struct keymap g_binds[] = {
 static unsigned g_joy[RETRO_DEVICE_ID_JOYPAD_R3+1] = { 0 };
 
 #define load_sym(V, S) do {\
-	if (!((*(void**)&V) = dlsym(g_retro.handle, #S))) \
-		die("Failed to load symbol '" #S "'': %s", dlerror()); \
+    if (!((*(void**)&V) = SDL_LoadFunction(g_retro.handle, #S))) \
+        die("Failed to load symbol '" #S "'': %s", SDL_GetError()); \
 	} while (0)
 #define load_retro_sym(S) load_sym(g_retro.S, S)
 
@@ -112,10 +106,10 @@ static void die(const char *fmt, ...) {
 }
 
 static void refresh_vertex_data() {
-	assert(g_video.tex_w);
-	assert(g_video.tex_h);
-	assert(g_video.clip_w);
-	assert(g_video.clip_h);
+    SDL_assert(g_video.tex_w);
+    SDL_assert(g_video.tex_h);
+    SDL_assert(g_video.clip_w);
+    SDL_assert(g_video.clip_h);
 
 	GLfloat *coords = g_texcoords;
 	coords[1] = coords[5] = (float)g_video.clip_h / g_video.tex_h;
@@ -123,30 +117,29 @@ static void refresh_vertex_data() {
 }
 
 
-static void resize_cb(GLFWwindow *win, int w, int h) {
+static void resize_cb(int w, int h) {
 	glViewport(0, 0, w, h);
 }
 
 
 static void create_window(int width, int height) {
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
 
-	g_win = glfwCreateWindow(width, height, "sdlarch", NULL, NULL);
+    g_win = SDL_CreateWindow("sdlarch", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL);
 
 	if (!g_win)
 		die("Failed to create window.");
 
-	glfwSetFramebufferSizeCallback(g_win, resize_cb);
+    g_ctx = SDL_GL_CreateContext(g_win);
 
-	glfwMakeContextCurrent(g_win);
+    if (!g_win)
+        die("Failed to create OpenGL context.");
 
-	glewExperimental = GL_TRUE;
-	if (glewInit() != GLEW_OK)
-		die("Failed to initialize glew");
+    if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
+        die("Failed to initialize glad.");
 
-	glfwSwapInterval(1);
+    SDL_GL_SetSwapInterval(1);
 
 	printf("GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
@@ -154,7 +147,7 @@ static void create_window(int width, int height) {
 
 //	refresh_vertex_data();
 
-	resize_cb(g_win, width, height);
+    resize_cb(width, height);
 }
 
 
@@ -191,7 +184,7 @@ static void video_configure(const struct retro_game_geometry *geom) {
 	if (!g_video.pixfmt)
 		g_video.pixfmt = GL_UNSIGNED_SHORT_5_5_5_1;
 
-	glfwSetWindowSize(g_win, nwidth, nheight);
+    SDL_SetWindowSize(g_win, nwidth, nheight);
 
 	glGenTextures(1, &g_video.tex_id);
 
@@ -269,21 +262,19 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
 						g_video.pixtype, g_video.pixfmt, data);
 	}
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
+
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+    glVertexPointer(2, GL_FLOAT, 0, g_vertex);
+    glTexCoordPointer(2, GL_FLOAT, 0, g_texcoords);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    SDL_GL_SwapWindow(g_win);
 }
-
-
-static void video_render() {
-	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
-
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-	glVertexPointer(2, GL_FLOAT, 0, g_vertex);
-	glTexCoordPointer(2, GL_FLOAT, 0, g_texcoords);
-
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-}
-
 
 static void video_deinit() {
 	if (g_video.tex_id)
@@ -294,34 +285,32 @@ static void video_deinit() {
 
 
 static void audio_init(int frequency) {
-	int err;
+    SDL_AudioSpec desired;
+    SDL_AudioSpec obtained;
 
-	if ((err = snd_pcm_open(&g_pcm, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
-		die("Failed to open playback device: %s", snd_strerror(err));
+    SDL_zero(desired);
+    SDL_zero(obtained);
 
-	err = snd_pcm_set_params(g_pcm, SND_PCM_FORMAT_S16, SND_PCM_ACCESS_RW_INTERLEAVED, 2, frequency, 1, 64 * 1000);
+    desired.format = AUDIO_S16;
+    desired.freq   = frequency;
+    desired.channels = 2;
+    desired.samples = 4096;
 
-	if (err < 0)
-		die("Failed to configure playback device: %s", snd_strerror(err));
+    g_pcm = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
+    if (!g_pcm)
+        die("Failed to open playback device: %s", SDL_GetError());
+
+    SDL_PauseAudioDevice(g_pcm, 0);
 }
 
 
 static void audio_deinit() {
-	snd_pcm_close(g_pcm);
+    SDL_CloseAudioDevice(g_pcm);
 }
 
-
-static size_t audio_write(const void *buf, unsigned frames) {
-	int written = snd_pcm_writei(g_pcm, buf, frames);
-
-	if (written < 0) {
-		printf("Alsa warning/error #%i: ", -written);
-		snd_pcm_recover(g_pcm, written, 0);
-
-		return 0;
-	}
-
-	return written;
+static size_t audio_write(const int16_t *buf, unsigned frames) {
+    SDL_QueueAudio(g_pcm, buf, sizeof(*buf) * frames * 2);
+    return frames;
 }
 
 
@@ -383,8 +372,10 @@ static void core_video_refresh(const void *data, unsigned width, unsigned height
 
 static void core_input_poll(void) {
 	int i;
+    g_kbd = SDL_GetKeyboardState(NULL);
+
 	for (i = 0; g_binds[i].k || g_binds[i].rk; ++i)
-		g_joy[g_binds[i].rk] = (glfwGetKey(g_win, g_binds[i].k) == GLFW_PRESS);
+        g_joy[g_binds[i].rk] = g_kbd[g_binds[i].k];
 }
 
 
@@ -416,12 +407,10 @@ static void core_load(const char *sofile) {
 	void (*set_audio_sample_batch)(retro_audio_sample_batch_t) = NULL;
 
 	memset(&g_retro, 0, sizeof(g_retro));
-	g_retro.handle = dlopen(sofile, RTLD_LAZY);
+    g_retro.handle = SDL_LoadObject(sofile);
 
 	if (!g_retro.handle)
-		die("Failed to load core: %s", dlerror());
-
-	dlerror();
+        die("Failed to load core: %s", SDL_GetError());
 
 	load_retro_sym(retro_init);
 	load_retro_sym(retro_deinit);
@@ -459,22 +448,27 @@ static void core_load_game(const char *filename) {
 	struct retro_system_av_info av = {0};
 	struct retro_system_info system = {0};
 	struct retro_game_info info = { filename, 0 };
-	FILE *file = fopen(filename, "rb");
 
-	if (!file)
-		goto libc_error;
+    SDL_RWops *file = SDL_RWFromFile(filename, "rb");
 
-	fseek(file, 0, SEEK_END);
-	info.size = ftell(file);
-	rewind(file);
+    if (!file)
+        die("Failed to load %s: %s", filename, SDL_GetError());
+
+    info.path = filename;
+    info.meta = "";
+    info.data = NULL;
+    info.size = SDL_RWsize(file);
 
 	g_retro.retro_get_system_info(&system);
 
 	if (!system.need_fullpath) {
-		info.data = malloc(info.size);
+        info.data = SDL_malloc(info.size);
 
-		if (!info.data || !fread((void*)info.data, info.size, 1, file))
-			goto libc_error;
+        if (!info.data)
+            die("Failed to allocate memory for the content");
+
+        if (!SDL_RWread(file, (void*)info.data, info.size, 1))
+            die("Failed to read file data: %s", SDL_GetError());
 	}
 
 	if (!g_retro.retro_load_game(&info))
@@ -485,10 +479,12 @@ static void core_load_game(const char *filename) {
 	video_configure(&av.geometry);
 	audio_init(av.timing.sample_rate);
 
-	return;
+    if (info.data)
+        SDL_free((void*)info.data);
 
-libc_error:
-	die("Failed to load content '%s': %s", filename, strerror(errno));
+    SDL_RWclose(file);
+
+	return;
 }
 
 
@@ -497,7 +493,7 @@ static void core_unload() {
 		g_retro.retro_deinit();
 
 	if (g_retro.handle)
-		dlclose(g_retro.handle);
+        SDL_UnloadObject(g_retro.handle);
 }
 
 
@@ -505,28 +501,37 @@ int main(int argc, char *argv[]) {
 	if (argc < 3)
 		die("usage: %s <core> <game>", argv[0]);
 
-	if (!glfwInit())
-		die("Failed to initialize glfw");
+    if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
+        die("Failed to initialize SDL");
 
-	core_load(argv[1]);
+    core_load(argv[1]);
 	core_load_game(argv[2]);
 
-	while (!glfwWindowShouldClose(g_win)) {
-		glfwPollEvents();
+    SDL_Event ev;
+
+    bool running = true;
+    while (running) {
+        while (SDL_PollEvent(&ev)) {
+            switch (ev.type) {
+            case SDL_QUIT: running = false; break;
+            case SDL_WINDOWEVENT:
+                switch (ev.window.event) {
+                case SDL_WINDOWEVENT_CLOSE: running = false; break;
+                case SDL_WINDOWEVENT_RESIZED:
+                    resize_cb(ev.window.data1, ev.window.data2);
+                    break;
+                }
+            }
+        }
 
 		g_retro.retro_run();
-
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		video_render();
-
-		glfwSwapBuffers(g_win);
 	}
 
 	core_unload();
 	audio_deinit();
 	video_deinit();
 
-	glfwTerminate();
-	return 0;
+    SDL_Quit();
+
+    return EXIT_SUCCESS;
 }

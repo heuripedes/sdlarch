@@ -1,9 +1,9 @@
 target   := sdlarch
-sources  := sdlarch.c
+sources  := sdlarch.c glad.c ringbuf.c
 CFLAGS   := -Wall -O2 -g
 LFLAGS   := -static-libgcc
 LIBS     := -ldl
-packages := gl glew glfw3 alsa
+packages := sdl2
 
 # do not edit from here onwards
 objects := $(addprefix build/,$(sources:.c=.o))
