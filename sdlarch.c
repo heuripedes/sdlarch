@@ -10,19 +10,6 @@ static const uint8_t *g_kbd = NULL;
 
 static float g_scale = 3;
 
-static GLfloat g_vertex_data[] = {
-    // pos
-	-1.0f, -1.0f, // left-bottom
-	-1.0f,  1.0f, // left-top
-	 1.0f, -1.0f, // right-bottom
-	 1.0f,  1.0f, // right-top
-    // coord
-	0.0f,  1.0f,
-	0.0f,  0.0f,
-	1.0f,  1.0f,
-	1.0f,  0.0f,
-};
-
 static struct {
 	GLuint tex_id;
     GLuint fbo_id;
@@ -51,6 +38,7 @@ static struct {
     GLint i_pos;
     GLint i_coord;
     GLint u_tex;
+    GLint u_mvp;
 
 } g_shader = {0};
 
@@ -59,9 +47,10 @@ static const char *g_vshader_src =
     "attribute vec2 i_pos;\n"
     "attribute vec2 i_coord;\n"
     "varying vec2 var_coord;\n"
+    "uniform mat4 u_mvp;\n"
     "void main() {\n"
         "var_coord = i_coord;\n"
-        "gl_Position = vec4(i_pos, 0.0, 1.0);// * ftransform();\n"
+        "gl_Position = vec4(i_pos, 0.0, 1.0) * u_mvp;\n"
     "}";
 
 static const char *g_fshader_src =
@@ -162,6 +151,20 @@ static GLuint compile_shader(unsigned type, unsigned count, const char **strings
     return shader;
 }
 
+void ortho2d(float m[4][4], float left, float right, float bottom, float top) {
+    m[0][0] = 1; m[0][1] = 0; m[0][2] = 0; m[0][3] = 0;
+    m[1][0] = 0; m[1][1] = 1; m[1][2] = 0; m[1][3] = 0;
+    m[2][0] = 0; m[2][1] = 0; m[2][2] = 1; m[2][3] = 0;
+    m[3][0] = 0; m[3][1] = 0; m[3][2] = 0; m[3][3] = 1;
+
+    m[0][0] = 2.0f / (right - left);
+    m[1][1] = 2.0f / (top - bottom);
+    m[2][2] = -1.0f;
+    m[3][0] = -(right + left) / (right - left);
+    m[3][1] = -(top + bottom) / (top - bottom);
+}
+
+
 
 static void init_shaders() {
     GLuint vshader = compile_shader(GL_VERTEX_SHADER, 1, &g_vshader_src);
@@ -189,19 +192,29 @@ static void init_shaders() {
     }
 
     g_shader.program = program;
-
     g_shader.i_pos   = glGetAttribLocation(program,  "i_pos");
     g_shader.i_coord = glGetAttribLocation(program,  "i_coord");
     g_shader.u_tex   = glGetUniformLocation(program, "u_tex");
+    g_shader.u_mvp   = glGetUniformLocation(program, "u_mvp");
 
-    SDL_assert(g_shader.i_pos   != -1);
-    SDL_assert(g_shader.i_coord != -1);
-    SDL_assert(g_shader.u_tex   != -1);
+    glGenVertexArrays(1, &g_shader.vao);
+    glGenBuffers(1, &g_shader.vbo);
 
     glUseProgram(g_shader.program);
+
     glUniform1i(g_shader.u_tex, 0);
+
+    float m[4][4];
+    if (g_video.hw.bottom_left_origin)
+        ortho2d(m, -1, 1, 1, -1);
+    else
+        ortho2d(m, -1, 1, -1, 1);
+
+    glUniformMatrix4fv(g_shader.u_mvp, 1, GL_FALSE, (float*)m);
+
     glUseProgram(0);
 }
+
 
 static void refresh_vertex_data() {
     SDL_assert(g_video.tex_w);
@@ -209,29 +222,63 @@ static void refresh_vertex_data() {
     SDL_assert(g_video.clip_w);
     SDL_assert(g_video.clip_h);
 
-    GLfloat *coords = &g_vertex_data[8];;
-	coords[1] = coords[5] = (float)g_video.clip_h / g_video.tex_h;
-	coords[4] = coords[6] = (float)g_video.clip_w / g_video.tex_w;
+    float bottom = (float)g_video.clip_h / g_video.tex_h;
+    float right  = (float)g_video.clip_w / g_video.tex_w;
 
-    if (!g_shader.vao)
-        glGenVertexArrays(1, &g_shader.vao);
+    float vertex_data[] = {
+        // pos, coord
+        -1.0f, -1.0f, 0.0f,  bottom, // left-bottom
+        -1.0f,  1.0f, 0.0f,  0.0f,   // left-top
+         1.0f, -1.0f, right,  bottom,// right-bottom
+         1.0f,  1.0f, right,  0.0f,  // right-top
+    };
 
     glBindVertexArray(g_shader.vao);
 
-    if (!g_shader.vbo)
-        glGenBuffers(1, &g_shader.vbo);
-
     glBindBuffer(GL_ARRAY_BUFFER, g_shader.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_data), g_vertex_data, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex_data), vertex_data, GL_STREAM_DRAW);
 
     glEnableVertexAttribArray(g_shader.i_pos);
-    glVertexAttribPointer(g_shader.i_pos, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
     glEnableVertexAttribArray(g_shader.i_coord);
-    glVertexAttribPointer(g_shader.i_coord, 2, GL_FLOAT, GL_FALSE, 0, (void*)(8 * sizeof(GLfloat)));
+    glVertexAttribPointer(g_shader.i_pos, 2, GL_FLOAT, GL_FALSE, sizeof(float)*4, 0);
+    glVertexAttribPointer(g_shader.i_coord, 2, GL_FLOAT, GL_FALSE, sizeof(float)*4, (void*)(2 * sizeof(float)));
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+static void init_framebuffer(int width, int height)
+{
+    glGenFramebuffers(1, &g_video.fbo_id);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_video.fbo_id);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_video.tex_id, 0);
+
+    if (g_video.hw.depth && g_video.hw.stencil) {
+        glGenRenderbuffers(1, &g_video.rbo_id);
+        glBindRenderbuffer(GL_RENDERBUFFER, g_video.rbo_id);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, g_video.rbo_id);
+    } else if (g_video.hw.depth) {
+        glGenRenderbuffers(1, &g_video.rbo_id);
+        glBindRenderbuffer(GL_RENDERBUFFER, g_video.rbo_id);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_video.rbo_id);
+    }
+
+    if (g_video.hw.depth || g_video.hw.stencil)
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    SDL_assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 
@@ -259,7 +306,7 @@ static void create_window(int width, int height) {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
         break;
     case RETRO_HW_CONTEXT_OPENGL:
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
         break;
     default:
         die("Unsupported hw context %i. (only OPENGL, OPENGL_CORE and OPENGLES2 supported)", g_video.hw.context_type);
@@ -286,16 +333,11 @@ static void create_window(int width, int height) {
     fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
     fprintf(stderr, "GL_VERSION: %s\n", glGetString(GL_VERSION));
 
-    SDL_GL_SetSwapInterval(1);
 
     init_shaders();
 
-    // make opengl traces nicer
-    SDL_GL_SwapWindow(g_win);
-
-    g_video.hw.context_reset();
-
-//	refresh_vertex_data();
+    SDL_GL_SetSwapInterval(1);
+    SDL_GL_SwapWindow(g_win); // make apitrace output nicer
 
     resize_cb(width, height);
 }
@@ -356,12 +398,16 @@ static void video_configure(const struct retro_game_geometry *geom) {
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
+    init_framebuffer(geom->base_width, geom->base_height);
+
 	g_video.tex_w = geom->max_width;
 	g_video.tex_h = geom->max_height;
 	g_video.clip_w = geom->base_width;
 	g_video.clip_h = geom->base_height;
 
 	refresh_vertex_data();
+
+    g_video.hw.context_reset();
 }
 
 
@@ -394,13 +440,15 @@ static bool video_set_pixel_format(unsigned format) {
 
 
 static void video_refresh(const void *data, unsigned width, unsigned height, unsigned pitch) {
-	if (g_video.clip_w != width || g_video.clip_h != height) {
+    if (g_video.clip_w != width || g_video.clip_h != height)
+    {
 		g_video.clip_h = height;
 		g_video.clip_w = width;
 
 		refresh_vertex_data();
 	}
 
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
 	if (pitch != g_video.pitch) {
@@ -412,6 +460,10 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
 						g_video.pixtype, g_video.pixfmt, data);
 	}
+
+    int w = 0, h = 0;
+    SDL_GetWindowSize(g_win, &w, &h);
+    glViewport(0, 0, w, h);
 
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -696,6 +748,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		g_retro.retro_run();
 	}
 

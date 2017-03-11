@@ -1,8 +1,8 @@
 target   := sdlarch
-sources  := sdlarch.c glad.c ringbuf.c
+sources  := sdlarch.c glad.c
 CFLAGS   := -Wall -g
 LFLAGS   := -static-libgcc
-LIBS     := -ldl
+LIBS     := 
 packages := sdl2
 
 # do not edit from here onwards
