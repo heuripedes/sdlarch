@@ -24,7 +24,7 @@ $(target): Makefile $(objects)
 	$(CC) $(LFLAGS) -o $@ $(objects) $(LIBS)
 
 build/%.o: %.c Makefile
-	-mkdir -p $(dir $@)
+	-@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -MMD -o $@ $<
 
 -include $(addprefix build/,$(sources:.c=.d))

@@ -43,22 +43,22 @@ static struct {
 } g_shader = {0};
 
 static const char *g_vshader_src =
-    "#version 120\n"
-    "attribute vec2 i_pos;\n"
-    "attribute vec2 i_coord;\n"
-    "varying vec2 var_coord;\n"
+    "#version 150\n"
+    "in vec2 i_pos;\n"
+    "in vec2 i_coord;\n"
+    "out vec2 o_coord;\n"
     "uniform mat4 u_mvp;\n"
     "void main() {\n"
-        "var_coord = i_coord;\n"
+        "o_coord = i_coord;\n"
         "gl_Position = vec4(i_pos, 0.0, 1.0) * u_mvp;\n"
     "}";
 
 static const char *g_fshader_src =
-    "#version 120\n"
-    "varying vec2 var_coord;\n"
+    "#version 150\n"
+    "in vec2 o_coord;\n"
     "uniform sampler2D u_tex;\n"
     "void main() {\n"
-        "gl_FragColor = texture2D(u_tex, var_coord);\n"
+        "gl_FragColor = texture2D(u_tex, o_coord);\n"
     "}";
 
 
