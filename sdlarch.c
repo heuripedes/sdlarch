@@ -9,6 +9,7 @@ static SDL_AudioDeviceID g_pcm = 0;
 static const uint8_t *g_kbd = NULL;
 
 static float g_scale = 3;
+bool running = true;
 
 static struct {
 	GLuint tex_id;
@@ -594,6 +595,9 @@ static void core_input_poll(void) {
 
 	for (i = 0; g_binds[i].k || g_binds[i].rk; ++i)
         g_joy[g_binds[i].rk] = g_kbd[g_binds[i].k];
+
+    if (g_kbd[SDL_SCANCODE_ESCAPE])
+        running = false;
 }
 
 
@@ -735,7 +739,6 @@ int main(int argc, char *argv[]) {
 
     SDL_Event ev;
 
-    bool running = true;
     while (running) {
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
