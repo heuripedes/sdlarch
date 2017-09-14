@@ -577,12 +577,12 @@ static bool core_environment(unsigned cmd, void *data) {
         g_video.hw = *hw;
         return true;
     }
-    case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK:
-        // @TODO error: a label can only be part of a statement and a declaration is not a statement
+    case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK: {
         const struct retro_frame_time_callback *frame_time =
             (const struct retro_frame_time_callback*)data;
         runloop_frame_time = *frame_time;
         break;
+    }
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
 		return false;
@@ -768,7 +768,7 @@ int main(int argc, char *argv[]) {
             if (!runloop_frame_time_last)
                 delta = runloop_frame_time.reference;
             runloop_frame_time_last = current;
-            runloop_frame_time.callback(delta);
+            runloop_frame_time.callback(delta * 1000);
         }
 
         while (SDL_PollEvent(&ev)) {
