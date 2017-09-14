@@ -7,7 +7,9 @@ static SDL_Window *g_win = NULL;
 static SDL_GLContext *g_ctx = NULL;
 static SDL_AudioDeviceID g_pcm = 0;
 static const uint8_t *g_kbd = NULL;
+static void resize_to_aspect(double ratio, int sw, int sh, int *dw, int *dh);
 
+static float desired_aspect;
 static float g_scale = 3;
 bool running = true;
 
@@ -286,7 +288,14 @@ static void init_framebuffer(int width, int height)
 
 static void resize_cb(int w, int h) {
 	glViewport(0, 0, w, h);
-}
+	// Find the new desired width/height.
+	int nw, nh;
+	resize_to_aspect(desired_aspect, w, h, &nw, &nh);
+
+	// Set the window size to match the aspect ratio.
+	SDL_SetWindowSize(g_win, nw, nh);
+	glViewport(0, 0, nw, nh);
+ }
 
 
 static void create_window(int width, int height) {
@@ -316,7 +325,7 @@ static void create_window(int width, int height) {
         die("Unsupported hw context %i. (only OPENGL, OPENGL_CORE and OPENGLES2 supported)", g_video.hw.context_type);
     }
 
-    g_win = SDL_CreateWindow("sdlarch", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL);
+    g_win = SDL_CreateWindow("sdlarch", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 
 	if (!g_win)
         die("Failed to create window: %s", SDL_GetError());
@@ -364,6 +373,8 @@ static void resize_to_aspect(double ratio, int sw, int sh, int *dw, int *dh) {
 static void video_configure(const struct retro_game_geometry *geom) {
 	int nwidth, nheight;
 
+	// Save the aspect ratio, and find the desired window width/height.
+	desired_aspect = geom->aspect_ratio;
 	resize_to_aspect(geom->aspect_ratio, geom->base_width * 1, geom->base_height * 1, &nwidth, &nheight);
 
 	nwidth *= g_scale;
