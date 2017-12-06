@@ -9,6 +9,7 @@ static SDL_AudioDeviceID g_pcm = 0;
 static struct retro_frame_time_callback runloop_frame_time;
 static retro_usec_t runloop_frame_time_last = 0;
 static const uint8_t *g_kbd = NULL;
+static struct retro_audio_callback audio_callback;
 
 static float g_scale = 3;
 bool running = true;
@@ -513,6 +514,11 @@ static void audio_init(int frequency) {
         die("Failed to open playback device: %s", SDL_GetError());
 
     SDL_PauseAudioDevice(g_pcm, 0);
+
+    // Let the core know that the audio device has been initialized.
+    if (audio_callback.set_state) {
+        audio_callback.set_state(true);
+    }
 }
 
 
@@ -582,6 +588,11 @@ static bool core_environment(unsigned cmd, void *data) {
             (const struct retro_frame_time_callback*)data;
         runloop_frame_time = *frame_time;
         break;
+    }
+    case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
+        struct retro_audio_callback *audio_cb = (struct retro_audio_callback*)data;
+        audio_callback = *audio_cb;
+        return true;
     }
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
@@ -769,6 +780,11 @@ int main(int argc, char *argv[]) {
                 delta = runloop_frame_time.reference;
             runloop_frame_time_last = current;
             runloop_frame_time.callback(delta * 1000);
+        }
+
+        // Ask the core to emit the audio.
+        if (audio_callback.callback) {
+            audio_callback.callback();
         }
 
         while (SDL_PollEvent(&ev)) {
