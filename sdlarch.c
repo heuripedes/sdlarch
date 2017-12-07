@@ -6,7 +6,10 @@
 static SDL_Window *g_win = NULL;
 static SDL_GLContext *g_ctx = NULL;
 static SDL_AudioDeviceID g_pcm = 0;
+static struct retro_frame_time_callback runloop_frame_time;
+static retro_usec_t runloop_frame_time_last = 0;
 static const uint8_t *g_kbd = NULL;
+static struct retro_audio_callback audio_callback;
 
 static float g_scale = 3;
 bool running = true;
@@ -511,6 +514,11 @@ static void audio_init(int frequency) {
         die("Failed to open playback device: %s", SDL_GetError());
 
     SDL_PauseAudioDevice(g_pcm, 0);
+
+    // Let the core know that the audio device has been initialized.
+    if (audio_callback.set_state) {
+        audio_callback.set_state(true);
+    }
 }
 
 
@@ -543,7 +551,6 @@ static void core_log(enum retro_log_level level, const char *fmt, ...) {
 		exit(EXIT_FAILURE);
 }
 
-
 static uintptr_t core_get_current_framebuffer() {
     return g_video.fbo_id;
 }
@@ -574,6 +581,17 @@ static bool core_environment(unsigned cmd, void *data) {
         hw->get_current_framebuffer = core_get_current_framebuffer;
         hw->get_proc_address = (retro_hw_get_proc_address_t)SDL_GL_GetProcAddress;
         g_video.hw = *hw;
+        return true;
+    }
+    case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK: {
+        const struct retro_frame_time_callback *frame_time =
+            (const struct retro_frame_time_callback*)data;
+        runloop_frame_time = *frame_time;
+        break;
+    }
+    case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
+        struct retro_audio_callback *audio_cb = (struct retro_audio_callback*)data;
+        audio_callback = *audio_cb;
         return true;
     }
 	default:
@@ -713,6 +731,16 @@ static void core_load_game(const char *filename) {
     SDL_SetWindowTitle(g_win, window_title);
 }
 
+/**
+ * cpu_features_get_time_usec:
+ *
+ * Gets time in microseconds.
+ *
+ * Returns: time in microseconds.
+ **/
+retro_time_t cpu_features_get_time_usec(void) {
+    return (retro_time_t)SDL_GetTicks();
+}
 
 static void core_unload() {
 	if (g_retro.initialized)
@@ -721,7 +749,6 @@ static void core_unload() {
 	if (g_retro.handle)
         SDL_UnloadObject(g_retro.handle);
 }
-
 
 static void noop() {}
 
@@ -744,6 +771,22 @@ int main(int argc, char *argv[]) {
     SDL_Event ev;
 
     while (running) {
+        // Update the game loop timer.
+        if (runloop_frame_time.callback) {
+            retro_time_t current = cpu_features_get_time_usec();
+            retro_time_t delta = current - runloop_frame_time_last;
+
+            if (!runloop_frame_time_last)
+                delta = runloop_frame_time.reference;
+            runloop_frame_time_last = current;
+            runloop_frame_time.callback(delta * 1000);
+        }
+
+        // Ask the core to emit the audio.
+        if (audio_callback.callback) {
+            audio_callback.callback();
+        }
+
         while (SDL_PollEvent(&ev)) {
             switch (ev.type) {
             case SDL_QUIT: running = false; break;
