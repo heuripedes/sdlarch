@@ -646,7 +646,6 @@ static void core_load(const char *sofile) {
 	void (*set_input_state)(retro_input_state_t) = NULL;
 	void (*set_audio_sample)(retro_audio_sample_t) = NULL;
 	void (*set_audio_sample_batch)(retro_audio_sample_batch_t) = NULL;
-
 	memset(&g_retro, 0, sizeof(g_retro));
     g_retro.handle = SDL_LoadObject(sofile);
 
@@ -765,8 +764,14 @@ int main(int argc, char *argv[]) {
     g_video.hw.context_reset   = noop;
     g_video.hw.context_destroy = noop;
 
+    // Load the core.
     core_load(argv[1]);
-	core_load_game(argv[2]);
+
+    // Load the game.
+    core_load_game(argv[2]);
+
+    // Configure the player input devices.
+    g_retro.retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
 
     SDL_Event ev;
 
