@@ -587,7 +587,7 @@ static bool core_environment(unsigned cmd, void *data) {
         const struct retro_frame_time_callback *frame_time =
             (const struct retro_frame_time_callback*)data;
         runloop_frame_time = *frame_time;
-        break;
+        return true;
     }
     case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
         struct retro_audio_callback *audio_cb = (struct retro_audio_callback*)data;
