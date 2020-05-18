@@ -721,11 +721,12 @@ static void core_load_game(const char *filename) {
     info.path = filename;
     info.meta = "";
     info.data = NULL;
-    info.size = SDL_RWsize(file);
+    info.size = 0;
 
 	g_retro.retro_get_system_info(&system);
 
 	if (!system.need_fullpath) {
+        info.size = SDL_RWsize(file);
         info.data = SDL_malloc(info.size);
 
         if (!info.data)
