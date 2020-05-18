@@ -71,6 +71,7 @@ static const char *g_fshader_src =
 static struct {
 	void *handle;
 	bool initialized;
+	bool supports_no_game;
 
 	void (*retro_init)(void);
 	void (*retro_deinit)(void);
@@ -618,6 +619,10 @@ static bool core_environment(unsigned cmd, void *data) {
         }
         return true;
     }
+    case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: {
+        g_retro.supports_no_game = *(bool*)data;
+        return true;
+    }
 	default:
 		core_log(RETRO_LOG_DEBUG, "Unhandled env #%u", cmd);
 		return false;
@@ -713,28 +718,32 @@ static void core_load_game(const char *filename) {
 	struct retro_system_info system = {0};
 	struct retro_game_info info = { filename, 0 };
 
-    SDL_RWops *file = SDL_RWFromFile(filename, "rb");
-
-    if (!file)
-        die("Failed to load %s: %s", filename, SDL_GetError());
-
     info.path = filename;
     info.meta = "";
     info.data = NULL;
     info.size = 0;
 
-	g_retro.retro_get_system_info(&system);
+    if (filename) {
+        g_retro.retro_get_system_info(&system);
 
-	if (!system.need_fullpath) {
-        info.size = SDL_RWsize(file);
-        info.data = SDL_malloc(info.size);
+        if (!system.need_fullpath) {
+            SDL_RWops *file = SDL_RWFromFile(filename, "rb");
 
-        if (!info.data)
-            die("Failed to allocate memory for the content");
+            if (!file)
+                die("Failed to load %s: %s", filename, SDL_GetError());
 
-        if (!SDL_RWread(file, (void*)info.data, info.size, 1))
-            die("Failed to read file data: %s", SDL_GetError());
-	}
+            info.size = SDL_RWsize(file);
+            info.data = SDL_malloc(info.size);
+
+            if (!info.data)
+                die("Failed to allocate memory for the content");
+
+            if (!SDL_RWread(file, (void*)info.data, info.size, 1))
+                die("Failed to read file data: %s", SDL_GetError());
+
+            SDL_RWclose(file);
+        }
+    }
 
 	if (!g_retro.retro_load_game(&info))
 		die("The core failed to load the content.");
@@ -746,8 +755,6 @@ static void core_load_game(const char *filename) {
 
     if (info.data)
         SDL_free((void*)info.data);
-
-    SDL_RWclose(file);
 
     // Now that we have the system info, set the window title.
     char window_title[255];
@@ -777,8 +784,8 @@ static void core_unload() {
 static void noop() {}
 
 int main(int argc, char *argv[]) {
-	if (argc < 3)
-		die("usage: %s <core> <game>", argv[0]);
+	if (argc < 2)
+		die("usage: %s <core> [game]", argv[0]);
 
     if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
         die("Failed to initialize SDL");
@@ -792,8 +799,11 @@ int main(int argc, char *argv[]) {
     // Load the core.
     core_load(argv[1]);
 
+    if (!g_retro.supports_no_game && argc < 3)
+        die("This core requires a game in order to run");
+
     // Load the game.
-    core_load_game(argv[2]);
+    core_load_game(argc > 2 ? argv[2] : NULL);
 
     // Configure the player input devices.
     g_retro.retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
