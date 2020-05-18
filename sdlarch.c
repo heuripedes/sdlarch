@@ -728,11 +728,17 @@ static void core_load_game(const char *filename) {
 
         if (!system.need_fullpath) {
             SDL_RWops *file = SDL_RWFromFile(filename, "rb");
+            Sint64 size;
 
             if (!file)
                 die("Failed to load %s: %s", filename, SDL_GetError());
 
-            info.size = SDL_RWsize(file);
+            size = SDL_RWsize(file);
+
+            if (size < 0)
+                die("Failed to query game file size: %s", SDL_GetError());
+
+            info.size = size;
             info.data = SDL_malloc(info.size);
 
             if (!info.data)
