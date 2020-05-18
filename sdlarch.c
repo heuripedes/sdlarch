@@ -556,18 +556,22 @@ static uintptr_t core_get_current_framebuffer() {
 }
 
 static bool core_environment(unsigned cmd, void *data) {
-	bool *bval;
-
 	switch (cmd) {
+    case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
+        bool *bval = (bool*)data;
+		*bval = false;
+        return true;
+    }
 	case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
 		struct retro_log_callback *cb = (struct retro_log_callback *)data;
 		cb->log = core_log;
         return true;
 	}
-	case RETRO_ENVIRONMENT_GET_CAN_DUPE:
-		bval = (bool*)data;
+	case RETRO_ENVIRONMENT_GET_CAN_DUPE: {
+		bool *bval = (bool*)data;
 		*bval = true;
         return true;
+    }
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
 		const enum retro_pixel_format *fmt = (enum retro_pixel_format *)data;
 
@@ -621,6 +625,11 @@ static bool core_environment(unsigned cmd, void *data) {
     }
     case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: {
         g_retro.supports_no_game = *(bool*)data;
+        return true;
+    }
+    case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
+        int *value = (int*)data;
+        *value = 1 << 0 | 1 << 1;
         return true;
     }
 	default:
