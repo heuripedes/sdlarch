@@ -326,6 +326,8 @@ static void create_window(int width, int height) {
 
     g_ctx = SDL_GL_CreateContext(g_win);
 
+    SDL_GL_MakeCurrent(g_win, g_ctx);
+
     if (!g_ctx)
         die("Failed to create OpenGL context: %s", SDL_GetError());
 
@@ -390,7 +392,7 @@ static void video_configure(const struct retro_game_geometry *geom) {
 	if (!g_video.tex_id)
 		die("Failed to create the video texture");
 
-	g_video.pitch = geom->base_width * g_video.bpp;
+	g_video.pitch = geom->max_width * g_video.bpp;
 
 	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
@@ -405,7 +407,7 @@ static void video_configure(const struct retro_game_geometry *geom) {
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-    init_framebuffer(geom->base_width, geom->base_height);
+    init_framebuffer(geom->max_width, geom->max_height);
 
 	g_video.tex_w = geom->max_width;
 	g_video.tex_h = geom->max_height;
@@ -419,9 +421,6 @@ static void video_configure(const struct retro_game_geometry *geom) {
 
 
 static bool video_set_pixel_format(unsigned format) {
-	if (g_video.tex_id)
-		die("Tried to change pixel format after initialization.");
-
 	switch (format) {
 	case RETRO_PIXEL_FORMAT_0RGB1555:
 		g_video.pixfmt = GL_UNSIGNED_SHORT_5_5_5_1;
@@ -592,6 +591,31 @@ static bool core_environment(unsigned cmd, void *data) {
     case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
         struct retro_audio_callback *audio_cb = (struct retro_audio_callback*)data;
         audio_callback = *audio_cb;
+        return true;
+    }
+    case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+    case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
+        const char **dir = (const char**)data;
+        *dir = ".";
+        return true;
+    }
+    case RETRO_ENVIRONMENT_SET_GEOMETRY: {
+        const struct retro_game_geometry *geom = (const struct retro_game_geometry *)data;
+        g_video.clip_w = geom->base_width;
+        g_video.clip_h = geom->base_height;
+
+        // some cores call this before we even have a window
+        if (g_win) {
+            refresh_vertex_data();
+
+            int ow = 0, oh = 0;
+            resize_to_aspect(geom->aspect_ratio, geom->base_width, geom->base_height, &ow, &oh);
+
+            ow *= g_scale;
+            oh *= g_scale;
+
+            SDL_SetWindowSize(g_win, ow, oh);
+        }
         return true;
     }
 	default:
