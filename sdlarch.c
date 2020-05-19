@@ -491,10 +491,33 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 }
 
 static void video_deinit() {
+    if (g_video.fbo_id)
+        glDeleteFramebuffers(1, &g_video.fbo_id);
+
 	if (g_video.tex_id)
 		glDeleteTextures(1, &g_video.tex_id);
 
+    if (g_shader.vao)
+        glDeleteVertexArrays(1, &g_shader.vao);
+
+    if (g_shader.vbo)
+        glDeleteBuffers(1, &g_shader.vbo);
+
+    if (g_shader.program)
+        glDeleteProgram(g_shader.program);
+
+    g_video.fbo_id = 0;
 	g_video.tex_id = 0;
+    g_shader.vao = 0;
+    g_shader.vbo = 0;
+    g_shader.program = 0;
+
+    SDL_GL_MakeCurrent(g_win, g_ctx);
+    SDL_GL_DeleteContext(g_ctx);
+
+    g_ctx = NULL;
+
+    SDL_DestroyWindow(g_win);
 }
 
 
@@ -853,7 +876,7 @@ int main(int argc, char *argv[]) {
 	if (argc < 2)
 		die("usage: %s <core> [game]", argv[0]);
 
-    if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_EVENTS) < 0)
         die("Failed to initialize SDL");
 
     g_video.hw.version_major = 4;
@@ -913,6 +936,12 @@ int main(int argc, char *argv[]) {
 	core_unload();
 	audio_deinit();
 	video_deinit();
+
+    for (const struct retro_variable *v = g_vars; v->key; ++v) {
+        free((char*)v->key);
+        free((char*)v->value);
+    }
+    free(g_vars);
 
     SDL_Quit();
 
