@@ -46,6 +46,8 @@ static struct {
 
 } g_shader = {0};
 
+static struct retro_variable *g_vars = NULL;
+
 static const char *g_vshader_src =
     "#version 150\n"
     "in vec2 i_pos;\n"
@@ -458,12 +460,11 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glBindTexture(GL_TEXTURE_2D, g_video.tex_id);
 
-	if (pitch != g_video.pitch) {
+	if (pitch != g_video.pitch)
 		g_video.pitch = pitch;
-		glPixelStorei(GL_UNPACK_ROW_LENGTH, g_video.pitch / g_video.bpp);
-	}
 
     if (data && data != RETRO_HW_FRAME_BUFFER_VALID) {
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, g_video.pitch / g_video.bpp);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
 						g_video.pixtype, g_video.pixfmt, data);
 	}
@@ -557,6 +558,56 @@ static uintptr_t core_get_current_framebuffer() {
 
 static bool core_environment(unsigned cmd, void *data) {
 	switch (cmd) {
+    case RETRO_ENVIRONMENT_SET_VARIABLES: {
+        const struct retro_variable *vars = (const struct retro_variable *)data;
+        size_t num_vars = 0;
+
+        for (const struct retro_variable *v = vars; v->key; ++v) {
+            num_vars++;
+        }
+
+        g_vars = (struct retro_variable*)calloc(num_vars + 1, sizeof(*g_vars));
+        for (unsigned i = 0; i < num_vars; ++i) {
+            const struct retro_variable *invar = &vars[i];
+            struct retro_variable *outvar = &g_vars[i];
+
+            const char *semicolon = strchr(invar->value, ';');
+            const char *first_pipe = strchr(invar->value, '|');
+
+            SDL_assert(semicolon && *semicolon);
+            semicolon++;
+            while (isspace(*semicolon))
+                semicolon++;
+
+            if (first_pipe) {
+                outvar->value = malloc((first_pipe - semicolon) + 1);
+                memcpy((char*)outvar->value, semicolon, first_pipe - semicolon);
+                ((char*)outvar->value)[first_pipe - semicolon] = '\0';
+            } else {
+                outvar->value = strdup(semicolon);
+            }
+
+            outvar->key = strdup(invar->key);
+            SDL_assert(outvar->key && outvar->value);
+        }
+
+        return true;
+    }
+    case RETRO_ENVIRONMENT_GET_VARIABLE: {
+        struct retro_variable *var = (struct retro_variable *)data;
+
+        if (!g_vars)
+            return false;
+
+        for (const struct retro_variable *v = g_vars; v->key; ++v) {
+            if (strcmp(var->key, v->key) == 0) {
+                var->value = v->value;
+                break;
+            }
+        }
+
+        return true;
+    }
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
         bool *bval = (bool*)data;
 		*bval = false;
