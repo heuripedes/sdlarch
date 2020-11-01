@@ -1,7 +1,12 @@
+UNAME_S := $(shell uname -s)
 target   := sdlarch
 sources  := sdlarch.c glad.c
 CFLAGS   := -Wall -g
+ifeq ($(UNAME_S),Darwin)
+LFLAGS   := -static-libstdc++
+else
 LFLAGS   := -static-libgcc
+endif
 LIBS     := 
 packages := sdl2
 
