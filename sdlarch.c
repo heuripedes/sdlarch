@@ -937,11 +937,13 @@ int main(int argc, char *argv[]) {
 	audio_deinit();
 	video_deinit();
 
-    for (const struct retro_variable *v = g_vars; v->key; ++v) {
-        free((char*)v->key);
-        free((char*)v->value);
+    if (g_vars) {
+        for (const struct retro_variable *v = g_vars; v->key; ++v) {
+            free((char*)v->key);
+            free((char*)v->value);
+        }
+        free(g_vars);
     }
-    free(g_vars);
 
     SDL_Quit();
 
