@@ -859,7 +859,7 @@ static void core_load_game(const char *filename) {
  * Returns: time in microseconds.
  **/
 retro_time_t cpu_features_get_time_usec(void) {
-    return (retro_time_t)SDL_GetTicks();
+    return (retro_time_t)SDL_GetTicks() * 1000;
 }
 
 static void core_unload() {
@@ -908,7 +908,7 @@ int main(int argc, char *argv[]) {
             if (!runloop_frame_time_last)
                 delta = runloop_frame_time.reference;
             runloop_frame_time_last = current;
-            runloop_frame_time.callback(delta * 1000);
+            runloop_frame_time.callback(delta);
         }
 
         // Ask the core to emit the audio.
