@@ -96,7 +96,7 @@ static struct {
 //	unsigned retro_get_region(void);
 //	void *retro_get_memory_data(unsigned id);
 //	size_t retro_get_memory_size(unsigned id);
-} g_retro; 
+} g_retro;
 
 
 struct keymap {
@@ -582,13 +582,14 @@ static uintptr_t core_get_current_framebuffer() {
 }
 
 /**
- * Retrieve the current time in milliseconds.
+ * cpu_features_get_time_usec:
  *
- * @todo Retrieve the unix timestamp in milliseconds?
- * @return retro_time_t The current time in milliseconds.
- */
-static retro_time_t core_get_time_usec() {
-    return (retro_time_t)SDL_GetTicks();
+ * Gets time in microseconds.
+ *
+ * Returns: time in microseconds.
+ **/
+retro_time_t cpu_features_get_time_usec(void) {
+    return (retro_time_t)SDL_GetTicks() * 1000;
 }
 
 /**
@@ -740,7 +741,7 @@ static bool core_environment(unsigned cmd, void *data) {
 	}
     case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: {
         struct retro_perf_callback *perf = (struct retro_perf_callback *)data;
-        perf->get_time_usec = core_get_time_usec;
+        perf->get_time_usec = cpu_features_get_time_usec;
         perf->get_cpu_features = core_get_cpu_features;
         perf->get_perf_counter = core_get_perf_counter;
         perf->perf_register = core_perf_register;
@@ -957,17 +958,6 @@ static void core_load_game(const char *filename) {
     char window_title[255];
     snprintf(window_title, sizeof(window_title), "sdlarch %s %s", system.library_name, system.library_version);
     SDL_SetWindowTitle(g_win, window_title);
-}
-
-/**
- * cpu_features_get_time_usec:
- *
- * Gets time in microseconds.
- *
- * Returns: time in microseconds.
- **/
-retro_time_t cpu_features_get_time_usec(void) {
-    return (retro_time_t)SDL_GetTicks() * 1000;
 }
 
 static void core_unload() {
