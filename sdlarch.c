@@ -74,6 +74,8 @@ static struct {
 	void *handle;
 	bool initialized;
 	bool supports_no_game;
+	// The last performance counter registered. TODO: Make it a linked list.
+	struct retro_perf_counter* perf_counter_last;
 
 	void (*retro_init)(void);
 	void (*retro_deinit)(void);
@@ -579,6 +581,102 @@ static uintptr_t core_get_current_framebuffer() {
     return g_video.fbo_id;
 }
 
+/**
+ * cpu_features_get_time_usec:
+ *
+ * Gets time in microseconds.
+ *
+ * Returns: time in microseconds.
+ **/
+retro_time_t cpu_features_get_time_usec(void) {
+    return (retro_time_t)SDL_GetTicks() * 1000;
+}
+
+/**
+ * Get the CPU Features.
+ *
+ * @see retro_get_cpu_features_t
+ * @return uint64_t Returns a bit-mask of detected CPU features (RETRO_SIMD_*).
+ */
+static uint64_t core_get_cpu_features() {
+    uint64_t cpu = 0;
+    if (SDL_HasAVX()) {
+        cpu |= RETRO_SIMD_AVX;
+    }
+    if (SDL_HasAVX2()) {
+        cpu |= RETRO_SIMD_AVX2;
+    }
+    if (SDL_HasMMX()) {
+        cpu |= RETRO_SIMD_MMX;
+    }
+    if (SDL_HasSSE()) {
+        cpu |= RETRO_SIMD_SSE;
+    }
+    if (SDL_HasSSE2()) {
+        cpu |= RETRO_SIMD_SSE2;
+    }
+    if (SDL_HasSSE3()) {
+        cpu |= RETRO_SIMD_SSE3;
+    }
+    if (SDL_HasSSE41()) {
+        cpu |= RETRO_SIMD_SSE4;
+    }
+    if (SDL_HasSSE42()) {
+        cpu |= RETRO_SIMD_SSE42;
+    }
+    return cpu;
+}
+
+/**
+ * A simple counter. Usually nanoseconds, but can also be CPU cycles.
+ *
+ * @see retro_perf_get_counter_t
+ * @return retro_perf_tick_t The current value of the high resolution counter.
+ */
+static retro_perf_tick_t core_get_perf_counter() {
+    return (retro_perf_tick_t)SDL_GetPerformanceCounter();
+}
+
+/**
+ * Register a performance counter.
+ *
+ * @see retro_perf_register_t
+ */
+static void core_perf_register(struct retro_perf_counter* counter) {
+    g_retro.perf_counter_last = counter;
+    counter->registered = true;
+}
+
+/**
+ * Starts a registered counter.
+ *
+ * @see retro_perf_start_t
+ */
+static void core_perf_start(struct retro_perf_counter* counter) {
+    if (counter->registered) {
+        counter->start = core_get_perf_counter();
+    }
+}
+
+/**
+ * Stops a registered counter.
+ *
+ * @see retro_perf_stop_t
+ */
+static void core_perf_stop(struct retro_perf_counter* counter) {
+    counter->total = core_get_perf_counter() - counter->start;
+}
+
+/**
+ * Log and display the state of performance counters.
+ *
+ * @see retro_perf_log_t
+ */
+static void core_perf_log() {
+    // TODO: Use a linked list of counters, and loop through them all.
+    core_log(RETRO_LOG_INFO, "[timer] %s: %i - %i", g_retro.perf_counter_last->ident, g_retro.perf_counter_last->start, g_retro.perf_counter_last->total);
+}
+
 static bool core_environment(unsigned cmd, void *data) {
 	switch (cmd) {
     case RETRO_ENVIRONMENT_SET_VARIABLES: {
@@ -641,6 +739,17 @@ static bool core_environment(unsigned cmd, void *data) {
 		cb->log = core_log;
         return true;
 	}
+    case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: {
+        struct retro_perf_callback *perf = (struct retro_perf_callback *)data;
+        perf->get_time_usec = cpu_features_get_time_usec;
+        perf->get_cpu_features = core_get_cpu_features;
+        perf->get_perf_counter = core_get_perf_counter;
+        perf->perf_register = core_perf_register;
+        perf->perf_start = core_perf_start;
+        perf->perf_stop = core_perf_stop;
+        perf->perf_log = core_perf_log;
+        return true;
+    }
 	case RETRO_ENVIRONMENT_GET_CAN_DUPE: {
 		bool *bval = (bool*)data;
 		*bval = true;
@@ -849,17 +958,6 @@ static void core_load_game(const char *filename) {
     char window_title[255];
     snprintf(window_title, sizeof(window_title), "sdlarch %s %s", system.library_name, system.library_version);
     SDL_SetWindowTitle(g_win, window_title);
-}
-
-/**
- * cpu_features_get_time_usec:
- *
- * Gets time in microseconds.
- *
- * Returns: time in microseconds.
- **/
-retro_time_t cpu_features_get_time_usec(void) {
-    return (retro_time_t)SDL_GetTicks() * 1000;
 }
 
 static void core_unload() {
