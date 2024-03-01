@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(sdlarch C)
 
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 99)
 
 set(target sdlarch)
 set(sources sdlarch.c glad.c)
