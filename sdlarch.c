@@ -26,6 +26,7 @@ static struct {
 	GLuint pitch;
 	GLint tex_w, tex_h;
 	GLuint clip_w, clip_h;
+    float aspect_ratio;
 
 	GLuint pixfmt;
 	GLuint pixtype;
@@ -293,7 +294,23 @@ static void init_framebuffer(int width, int height)
 
 
 static void resize_cb(int w, int h) {
-	glViewport(0, 0, w, h);
+    // Calculate the aspect ratio if it's not set.
+    if (g_video.aspect_ratio <= 0) {
+        g_video.aspect_ratio = (float)g_video.clip_w / (float)g_video.clip_h;
+    }
+
+    // Calculate the optimal width/height to display in the screen size.
+    int height = h;
+    int width = h * g_video.aspect_ratio;
+    if (width > w) {
+        height = (float)w / g_video.aspect_ratio;
+        width = w;
+    }
+
+    // Set the viewport in the middle of the screen.
+    int x = (w - width) / 2;
+    int y = (h - height) / 2;
+    glViewport(x, y, width, height);
 }
 
 
@@ -324,7 +341,7 @@ static void create_window(int width, int height) {
         die("Unsupported hw context %i. (only OPENGL, OPENGL_CORE and OPENGLES2 supported)", g_video.hw.context_type);
     }
 
-    g_win = SDL_CreateWindow("sdlarch", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL);
+    g_win = SDL_CreateWindow("sdlarch", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
 
 	if (!g_win)
         die("Failed to create window: %s", SDL_GetError());
@@ -414,6 +431,7 @@ static void video_configure(const struct retro_game_geometry *geom) {
 
     init_framebuffer(geom->max_width, geom->max_height);
 
+    g_video.aspect_ratio = geom->aspect_ratio;
 	g_video.tex_w = geom->max_width;
 	g_video.tex_h = geom->max_height;
 	g_video.clip_w = geom->base_width;
@@ -473,7 +491,7 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 
     int w = 0, h = 0;
     SDL_GetWindowSize(g_win, &w, &h);
-    glViewport(0, 0, w, h);
+    resize_cb(w, h);
 
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -493,20 +511,25 @@ static void video_refresh(const void *data, unsigned width, unsigned height, uns
 }
 
 static void video_deinit() {
-    if (g_video.fbo_id)
+    if (g_video.fbo_id) {
         glDeleteFramebuffers(1, &g_video.fbo_id);
+    }
 
-	if (g_video.tex_id)
+	if (g_video.tex_id) {
 		glDeleteTextures(1, &g_video.tex_id);
+    }
 
-    if (g_shader.vao)
+    if (g_shader.vao) {
         glDeleteVertexArrays(1, &g_shader.vao);
+    }
 
-    if (g_shader.vbo)
+    if (g_shader.vbo) {
         glDeleteBuffers(1, &g_shader.vbo);
+    }
 
-    if (g_shader.program)
+    if (g_shader.program) {
         glDeleteProgram(g_shader.program);
+    }
 
     g_video.fbo_id = 0;
 	g_video.tex_id = 0;
@@ -798,6 +821,7 @@ static bool core_environment(unsigned cmd, void *data) {
 
             int ow = 0, oh = 0;
             resize_to_aspect(geom->aspect_ratio, geom->base_width, geom->base_height, &ow, &oh);
+            g_video.aspect_ratio = geom->aspect_ratio;
 
             ow *= g_scale;
             oh *= g_scale;
